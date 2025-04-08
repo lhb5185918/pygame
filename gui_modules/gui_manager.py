@@ -4,6 +4,7 @@
 import pygame
 import sys
 from gui_modules.gui_base import GUI基础类
+from typing import Dict, Optional, Any, List
 
 class GUI管理器(GUI基础类):
     """GUI管理器类，负责管理不同界面并处理界面切换"""
@@ -38,68 +39,79 @@ class GUI管理器(GUI基础类):
             "类型": "淡入淡出"  # 淡入淡出, 滑动, 缩放
         }
         
-    def 注册界面(self, 界面名称, 界面实例):
+        self.界面注册表: Dict[str, Any] = {}  # 存储所有已注册的界面
+        self.界面栈: List[Any] = []  # 界面栈，用于返回上一界面
+        self.正在运行 = True
+        
+    def 注册界面(self, 界面实例):
         """注册一个界面到管理器
         
         参数:
-            界面名称(str): 界面的唯一标识名
-            界面实例: GUI界面实例
+            界面实例: 实现了GUI界面接口的实例
         """
-        self.界面字典[界面名称] = 界面实例
-        界面实例.管理器 = self  # 设置界面的管理器引用
+        界面实例.设置管理器(self)
+        界面名称 = 界面实例.名称
+        self.界面注册表[界面名称] = 界面实例
         
-    def 切换到界面(self, 界面名称, 动画类型="淡入淡出", 参数=None):
-        """切换到指定界面
+    def 切换到界面(self, 界面名称: str, 参数: Any = None, 保存当前界面: bool = True):
+        """切换到指定名称的界面
         
         参数:
-            界面名称(str): 要切换到的界面名称
-            动画类型(str): 切换动画类型 (淡入淡出, 滑动, 缩放)
-            参数(dict): 传递给界面的参数
-        """
-        # 检查界面是否存在
-        if 界面名称 not in self.界面字典:
-            print(f"错误: 界面 '{界面名称}' 不存在")
-            return
+            界面名称: 要切换到的界面名称
+            参数: 传递给新界面的参数
+            保存当前界面: 是否将当前界面保存到栈中
         
-        # 记录当前界面到历史
+        返回:
+            切换是否成功
+        """
+        if 界面名称 not in self.界面注册表:
+            print(f"错误: 界面'{界面名称}'未注册")
+            return False
+            
+        # 关闭当前界面
         if self.当前界面:
-            self.界面历史.append(self.当前界面)
+            if 保存当前界面:
+                self.界面栈.append(self.当前界面)
+            self.当前界面.关闭()
+            
+        # 切换到新界面
+        self.当前界面 = self.界面注册表[界面名称]
         
-        # 获取目标界面
-        目标界面 = self.界面字典[界面名称]
+        # 如果界面未初始化，先初始化
+        if not self.当前界面.已初始化:
+            self.当前界面.初始化()
+            
+        # 准备界面
+        self.当前界面.准备(参数)
+        return True
         
-        # 初始化切换动画
-        self.切换动画 = {
-            "进行中": True,
-            "开始时间": pygame.time.get_ticks(),
-            "持续时间": 500,  # 毫秒
-            "源界面": self.当前界面,
-            "目标界面": 界面名称,
-            "类型": 动画类型
-        }
-        
-        # 准备新界面
-        目标界面.准备(参数)
-        
-        # 设置当前界面
-        self.当前界面 = 界面名称
-        
-    def 返回上一界面(self, 动画类型="淡入淡出"):
-        """返回到上一个界面
+    def 返回上一界面(self, 参数: Any = None):
+        """返回上一个界面
         
         参数:
-            动画类型(str): 切换动画类型
+            参数: 传递给前一界面的参数
+            
+        返回:
+            返回是否成功
         """
-        if not self.界面历史:
-            print("没有上一个界面可返回")
-            return
+        if not self.界面栈:
+            print("错误: 界面栈为空，无法返回")
+            return False
+            
+        # 关闭当前界面
+        if self.当前界面:
+            self.当前界面.关闭()
+            
+        # 切换到栈中最上层的界面
+        self.当前界面 = self.界面栈.pop()
         
-        上一界面 = self.界面历史.pop()
-        self.切换到界面(上一界面, 动画类型)
+        # 准备界面
+        self.当前界面.准备(参数)
+        return True
         
     def 运行(self):
         """运行GUI管理器主循环"""
-        while True:
+        while self.正在运行:
             # 处理事件
             self._处理事件()
             
@@ -344,3 +356,17 @@ class GUI管理器(GUI基础类):
         self.消息计时器 = pygame.time.get_ticks()
         # 持续时间转为毫秒存储
         self.消息持续时间 = 持续时间 * 1000 
+
+    def 退出(self):
+        """退出界面管理器"""
+        self.正在运行 = False
+        
+        # 关闭所有界面
+        if self.当前界面:
+            self.当前界面.关闭()
+            
+        for 界面 in self.界面栈:
+            界面.关闭()
+            
+        self.界面栈.clear()
+        self.当前界面 = None 

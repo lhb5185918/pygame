@@ -6,6 +6,213 @@ import sys
 import os
 import random
 import math
+from typing import Any, List, Dict, Tuple, Optional, Callable
+
+class GUI界面:
+    """GUI界面基类，所有具体界面都应继承此类"""
+    
+    def __init__(self, 名称: str):
+        """初始化GUI界面
+        
+        参数:
+            名称: 界面的唯一标识名称
+        """
+        self.名称 = 名称
+        self.管理器 = None
+        self.已初始化 = False
+        self.按钮列表: List[Dict] = []
+        self.脏矩形列表: List[pygame.Rect] = []
+        self.主缓冲区: Optional[pygame.Surface] = None
+        self.字体缓存: Dict[Tuple[str, int], pygame.font.Font] = {}
+    
+    def 设置管理器(self, 管理器):
+        """设置界面管理器
+        
+        参数:
+            管理器: 界面管理器实例
+        """
+        self.管理器 = 管理器
+    
+    def 初始化(self):
+        """初始化界面资源，只会被调用一次"""
+        if self.已初始化:
+            return
+            
+        # 创建主缓冲区
+        if self.管理器:
+            self.主缓冲区 = pygame.Surface(self.管理器.屏幕.get_size()).convert_alpha()
+        
+        self.已初始化 = True
+    
+    def 准备(self, 参数: Any = None):
+        """准备界面显示，每次界面被切换到时调用
+        
+        参数:
+            参数: 切换到此界面时传递的参数
+        """
+        self.脏矩形列表.clear()
+        # 标记整个屏幕为脏矩形，需要完全重绘
+        if self.主缓冲区:
+            self.脏矩形列表.append(self.主缓冲区.get_rect())
+    
+    def 处理事件(self, 事件):
+        """处理pygame事件
+        
+        参数:
+            事件: pygame事件对象
+        """
+        # 处理按钮点击
+        if 事件.type == pygame.MOUSEBUTTONDOWN and 事件.button == 1:
+            self._处理按钮点击(事件.pos)
+    
+    def 更新(self):
+        """更新界面逻辑，每帧调用"""
+        pass
+    
+    def 绘制到表面(self, 表面: pygame.Surface):
+        """将界面绘制到指定表面上
+        
+        参数:
+            表面: 目标pygame表面
+        """
+        # 只更新脏矩形区域
+        for 矩形 in self.脏矩形列表:
+            表面.blit(self.主缓冲区, 矩形, 矩形)
+        
+        # 清除脏矩形列表
+        self.脏矩形列表.clear()
+    
+    def 关闭(self):
+        """关闭界面，释放资源"""
+        pass
+    
+    def 创建按钮(self, 矩形: pygame.Rect, 文本: str, 回调: Callable, 
+               颜色: Tuple[int, int, int] = (100, 100, 100),
+               悬停颜色: Tuple[int, int, int] = (150, 150, 150),
+               文本颜色: Tuple[int, int, int] = (255, 255, 255),
+               字体大小: int = 24):
+        """创建一个界面按钮
+        
+        参数:
+            矩形: 按钮的位置和大小
+            文本: 按钮上的文本
+            回调: 点击按钮时调用的函数
+            颜色: 按钮的背景颜色
+            悬停颜色: 鼠标悬停时按钮的颜色
+            文本颜色: 按钮文本的颜色
+            字体大小: 按钮文本的字体大小
+        
+        返回:
+            按钮ID
+        """
+        按钮 = {
+            'rect': 矩形,
+            'text': 文本,
+            'callback': 回调,
+            'color': 颜色,
+            'hover_color': 悬停颜色,
+            'text_color': 文本颜色,
+            'font_size': 字体大小,
+            'hovered': False
+        }
+        
+        self.按钮列表.append(按钮)
+        return len(self.按钮列表) - 1
+    
+    def 绘制按钮(self):
+        """绘制所有按钮"""
+        for 按钮 in self.按钮列表:
+            # 检查鼠标是否悬停在按钮上
+            鼠标位置 = pygame.mouse.get_pos()
+            按钮['hovered'] = 按钮['rect'].collidepoint(鼠标位置)
+            
+            # 选择按钮颜色
+            颜色 = 按钮['hover_color'] if 按钮['hovered'] else 按钮['color']
+            
+            # 绘制按钮背景
+            pygame.draw.rect(self.主缓冲区, 颜色, 按钮['rect'])
+            pygame.draw.rect(self.主缓冲区, (0, 0, 0), 按钮['rect'], 2)  # 边框
+            
+            # 绘制按钮文本
+            字体 = self._获取字体('simhei', 按钮['font_size'])
+            文本表面 = 字体.render(按钮['text'], True, 按钮['text_color'])
+            文本位置 = 文本表面.get_rect(center=按钮['rect'].center)
+            self.主缓冲区.blit(文本表面, 文本位置)
+            
+            # 添加到脏矩形列表
+            self.脏矩形列表.append(按钮['rect'])
+    
+    def 绘制文本(self, 文本: str, 位置: Tuple[int, int], 颜色: Tuple[int, int, int] = (0, 0, 0), 
+               字体名: str = 'simhei', 字体大小: int = 24, 居中: bool = False):
+        """在界面上绘制文本
+        
+        参数:
+            文本: 要绘制的文本
+            位置: 文本位置 (x, y)
+            颜色: 文本颜色
+            字体名: 字体名称
+            字体大小: 字体大小
+            居中: 是否居中对齐，若为True，则位置代表文本中心点
+        
+        返回:
+            文本的矩形区域
+        """
+        字体 = self._获取字体(字体名, 字体大小)
+        文本表面 = 字体.render(文本, True, 颜色)
+        
+        if 居中:
+            文本位置 = 文本表面.get_rect(center=位置)
+        else:
+            文本位置 = 文本表面.get_rect(topleft=位置)
+        
+        self.主缓冲区.blit(文本表面, 文本位置)
+        
+        # 添加到脏矩形列表
+        self.脏矩形列表.append(文本位置)
+        
+        return 文本位置
+    
+    def 清屏(self, 颜色: Tuple[int, int, int] = (255, 255, 255, 255)):
+        """清空界面
+        
+        参数:
+            颜色: 填充颜色
+        """
+        if self.主缓冲区:
+            self.主缓冲区.fill(颜色)
+            # 将整个表面添加到脏矩形列表
+            self.脏矩形列表.append(self.主缓冲区.get_rect())
+    
+    def _处理按钮点击(self, 位置):
+        """处理按钮点击
+        
+        参数:
+            位置: 鼠标点击位置
+        """
+        for 按钮 in self.按钮列表:
+            if 按钮['rect'].collidepoint(位置):
+                按钮['callback']()
+                break
+    
+    def _获取字体(self, 字体名: str, 字体大小: int) -> pygame.font.Font:
+        """获取字体对象，使用缓存提高性能
+        
+        参数:
+            字体名: 字体名称
+            字体大小: 字体大小
+        
+        返回:
+            字体对象
+        """
+        字体键 = (字体名, 字体大小)
+        
+        if 字体键 not in self.字体缓存:
+            try:
+                self.字体缓存[字体键] = pygame.font.SysFont(字体名, 字体大小)
+            except:
+                self.字体缓存[字体键] = pygame.font.Font(None, 字体大小)
+        
+        return self.字体缓存[字体键]
 
 class GUI基础类:
     """基于pygame的图形界面基础类，提供基本绘制功能"""
